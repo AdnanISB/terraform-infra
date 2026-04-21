@@ -16,6 +16,7 @@ variable "private_subnet_id" {
 variable "key_name" {
   type        = string
   description = "Key pair name for EC2 instances"
+  default = "dev-env"
 }
 
 variable "public_instance_count" {

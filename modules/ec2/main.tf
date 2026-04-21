@@ -1,4 +1,18 @@
 # ----------------------------
+# VPC
+# ----------------------------
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+
+  tags = {
+    Name        = "myproject-${var.environment}-vpc"
+    Environment = var.environment
+  }
+}
+
+# ----------------------------
 # Security Groups
 # ----------------------------
 
@@ -6,9 +20,10 @@
 resource "aws_security_group" "public_ec2_sg" {
   name        = "public-ec2-sg-${var.environment}"
   description = "Allow SSH and HTTP from internet"
-  vpc_id      = var.public_subnet_id
+  vpc_id      = aws_vpc.main.id
 
   ingress {
+    description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -16,6 +31,7 @@ resource "aws_security_group" "public_ec2_sg" {
   }
 
   ingress {
+    description = "HTTP"
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
@@ -23,6 +39,7 @@ resource "aws_security_group" "public_ec2_sg" {
   }
 
   egress {
+    description = "Allow all outbound"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -39,20 +56,24 @@ resource "aws_security_group" "public_ec2_sg" {
 resource "aws_security_group" "private_ec2_sg" {
   name        = "private-ec2-sg-${var.environment}"
   description = "Allow SSH only from bastion host"
-  vpc_id      = var.private_subnet_id
+
+  # ✅ FIXED: must be VPC ID (NOT subnet ID)
+  vpc_id = aws_vpc.main.id
 
   ingress {
+    description     = "SSH from bastion"
     from_port       = 22
     to_port         = 22
     protocol        = "tcp"
-    security_groups = [aws_security_group.public_ec2_sg.id]  # Only from bastion
+    security_groups = [aws_security_group.public_ec2_sg.id]
   }
 
   egress {
+    description = "Allow all outbound"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]  # Internet via NAT Gateway
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   tags = {
@@ -68,10 +89,13 @@ resource "aws_instance" "public_ec2" {
   count         = var.public_instance_count
   ami           = "ami-0c02fb55956c7d316"
   instance_type = "t2.micro"
-  subnet_id     = var.public_subnet_id
-  key_name      = var.key_name
+
+  subnet_id                   = var.public_subnet_id
+  key_name                    = var.key_name
   associate_public_ip_address = true
-  security_groups = [aws_security_group.public_ec2_sg.name]
+
+  # ✅ FIXED: must use IDs (not names)
+  vpc_security_group_ids = [aws_security_group.public_ec2_sg.id]
 
   tags = {
     Name        = "bastion-public-ec2-${count.index + 1}-${var.environment}"
@@ -86,14 +110,16 @@ resource "aws_instance" "private_ec2" {
   count         = var.private_instance_count
   ami           = "ami-0c02fb55956c7d316"
   instance_type = "t2.micro"
-  subnet_id     = var.private_subnet_id
-  key_name      = var.key_name
-  associate_public_ip_address = false  # No public IP
-  security_groups = [aws_security_group.private_ec2_sg.name]
+
+  subnet_id                   = var.private_subnet_id
+  key_name                    = var.key_name
+  associate_public_ip_address = false
+
+  # ✅ FIXED: must use IDs (not names)
+  vpc_security_group_ids = [aws_security_group.private_ec2_sg.id]
 
   tags = {
     Name        = "private-ec2-${count.index + 1}-${var.environment}"
     Environment = var.environment
   }
 }
-
